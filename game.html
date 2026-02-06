@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Cyberpunk Memory Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root {
+  --neon-pink: #ff2fdc;
+  --neon-blue: #00f6ff;
+  --neon-purple: #9d00ff;
+  --bg-dark: #050510;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: 'Orbitron', sans-serif;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #12002b, var(--bg-dark));
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.screen {
+  display: none;
+  text-align: center;
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+
+.active { display: block; }
+
+/* ---------- TITLE ---------- */
+.title {
+  font-size: 2.5rem;
+  color: var(--neon-blue);
+  text-shadow: 0 0 15px var(--neon-blue);
+  position: relative;
+}
+
+.title::before,
+.title::after {
+  content: '';
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  border: 2px solid var(--neon-pink);
+  top: -10%;
+  left: -10%;
+  animation: oscillate 3s infinite alternate ease-in-out;
+}
+
+.title::after {
+  border-color: var(--neon-purple);
+  animation-delay: 1.5s;
+}
+
+@keyframes oscillate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(2deg); }
+}
+
+/* ---------- BUTTONS ---------- */
+button {
+  background: linear-gradient(135deg, var(--neon-pink), var(--neon-blue));
+  border: none;
+  color: black;
+  padding: 14px 28px;
+  font-size: 1rem;
+  margin: 15px;
+  cursor: pointer;
+  border-radius: 8px;
+  box-shadow: 0 0 15px var(--neon-blue);
+}
+
+button:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 30px var(--neon-pink);
+}
+
+/* ---------- GAME ---------- */
+.stats {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.card {
+  background: linear-gradient(145deg, #111, #222);
+  height: 80px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--neon-blue);
+  font-size: 2rem;
+  transition: transform 0.4s;
+}
+
+.card span {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.card.flipped span,
+.card.matched span {
+  opacity: 1;
+}
+
+.card.flipped,
+.card.matched {
+  background: linear-gradient(145deg, var(--neon-blue), var(--neon-purple));
+  transform: rotateY(180deg);
+}
+
+.card.matched {
+  box-shadow: 0 0 25px var(--neon-pink);
+}
+
+/* ---------- MODAL ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.modal-box {
+  background: linear-gradient(145deg, #0d0221, #12002b);
+  border: 2px solid var(--neon-blue);
+  padding: 25px;
+  border-radius: 15px;
+  box-shadow: 0 0 30px var(--neon-pink);
+}
+
+@keyframes neonPulse {
+  0% { text-shadow: 0 0 5px #00f6ff; }
+  50% { text-shadow: 0 0 25px #ff2fdc; }
+  100% { text-shadow: 0 0 5px #00f6ff; }
+}
+
+.high-score-pulse {
+  animation: neonPulse 1.2s infinite;
+  color: #00f6ff;
+}
+
+/* ---------- CONFETTI ---------- */
+.confetti {
+  position: fixed;
+  width: 8px;
+  height: 14px;
+  top: -10px;
+  animation: fall linear forwards;
+  z-index: 20;
+}
+
+@keyframes fall {
+  to { transform: translateY(110vh) rotate(360deg); }
+}
+</style>
+</head>
+
+<body>
+
+<div id="endModal" class="modal">
+  <div class="modal-box">
+    <h2 id="endTitle"></h2>
+    <p id="endStats"></p>
+    <p id="highScoreMsg"></p>
+    <button onclick="location.reload()">Play Again</button>
+  </div>
+</div>
+
+<div class="screen active" id="startScreen">
+  <h1 class="title">CYBER MEMORY</h1>
+  <button onclick="goToDifficulty()">START</button>
+  <p>High Score: <span id="highScoreDisplay">0</span></p>
+</div>
+
+<div class="screen" id="difficultyScreen">
+  <h2>Select Difficulty</h2>
+  <button onclick="startGame('easy')">EASY</button>
+  <button onclick="startGame('medium')">MEDIUM</button>
+  <button onclick="startGame('hard')">HARD</button>
+</div>
+
+<div class="screen" id="gameScreen">
+  <div class="stats">
+    <span>Score: <span id="score">100</span></span>
+    <span>Time: <span id="time">0</span>s</span>
+  </div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+const flipSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-electric-click-1126.mp3');
+const matchSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-complete-2059.mp3');
+const wrongSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-failure-arcade-alert-notification-240.mp3');
+
+/* ---------- EMOJIS ---------- */
+const cyberEmojis = [
+  '🤖','👾','⚡','🧠','🕶️','🛸','🔮','💾','🧬','🚀'
+];
+
+let firstCard, lock, score, matched, timer, timeLeft, totalTime;
+let highScore = localStorage.getItem('cyberHighScore') || 0;
+document.getElementById('highScoreDisplay').textContent = highScore;
+
+function switchScreen(from, to) {
+  document.getElementById(from).classList.remove('active');
+  document.getElementById(to).classList.add('active');
+}
+
+function goToDifficulty() {
+  switchScreen('startScreen', 'difficultyScreen');
+}
+
+function startGame(level) {
+  switchScreen('difficultyScreen', 'gameScreen');
+  resetGame();
+
+  let pairs = level === 'easy' ? 4 : level === 'medium' ? 6 : 8;
+  let cols = level === 'easy' ? 2 : level === 'medium' ? 3 : 4;
+  timeLeft = level === 'easy' ? 60 : level === 'medium' ? 75 : 90;
+
+  setupGrid(pairs, cols);
+  startTimer();
+}
+
+function resetGame() {
+  clearInterval(timer);
+  score = 100;
+  matched = 0;
+  totalTime = 0;
+  firstCard = null;
+  lock = false;
+  document.getElementById('score').textContent = score;
+}
+
+function setupGrid(pairs, cols) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+  const selected = cyberEmojis.slice(0, pairs);
+  const cards = [...selected, ...selected].sort(() => Math.random() - 0.5);
+
+  cards.forEach(emoji => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.value = emoji;
+
+    const span = document.createElement('span');
+    span.textContent = emoji;
+    card.appendChild(span);
+
+    card.onclick = () => flipCard(card);
+    grid.appendChild(card);
+  });
+}
+
+function flipCard(card) {
+  if (lock || card.classList.contains('flipped')) return;
+
+  flipSound.play();
+  card.classList.add('flipped');
+
+  if (!firstCard) return firstCard = card;
+
+  if (firstCard.dataset.value === card.dataset.value) {
+    matchSound.play();
+    firstCard.classList.add('matched');
+    card.classList.add('matched');
+    matched += 2;
+    firstCard = null;
+    if (matched === document.querySelectorAll('.card').length) endGame(true);
+  } else {
+    lock = true;
+    wrongSound.play();
+    score -= 4;
+    document.getElementById('score').textContent = score;
+    setTimeout(() => {
+      firstCard.classList.remove('flipped');
+      card.classList.remove('flipped');
+      firstCard = null;
+      lock = false;
+      if (score <= 0) endGame(false);
+    }, 800);
+  }
+}
+
+function startTimer() {
+  timer = setInterval(() => {
+    timeLeft--;
+    totalTime++;
+    document.getElementById('time').textContent = timeLeft;
+    if (timeLeft <= 0) endGame(false);
+  }, 1000);
+}
+
+function launchConfetti() {
+  const colors = ['#ff2fdc','#00f6ff','#9d00ff','#00ff9c'];
+  for (let i = 0; i < 80; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.background = colors[Math.floor(Math.random()*colors.length)];
+    c.style.animationDuration = 2 + Math.random()*2 + 's';
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 4000);
+  }
+}
+
+function endGame(win) {
+  clearInterval(timer);
+  document.getElementById('endModal').style.display = 'flex';
+
+  let newHigh = score > highScore;
+  if (newHigh) {
+    highScore = score;
+    localStorage.setItem('cyberHighScore', highScore);
+  }
+
+  document.getElementById('endTitle').textContent =
+    win ? '🎉 Congratulations!' : '💀 Game Over';
+
+  document.getElementById('endStats').innerHTML =
+    `Time Taken: <b>${totalTime}s</b><br>Final Score: <b>${score}</b>`;
+
+  const highMsg = document.getElementById('highScoreMsg');
+  highMsg.textContent = newHigh ? '🔥 NEW HIGH SCORE!' : `High Score: ${highScore}`;
+  if (newHigh) highMsg.classList.add('high-score-pulse');
+  if (win) launchConfetti();
+}
+</script>
+
+</body>
+</html>
